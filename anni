@@ -1,0 +1,48 @@
+#!/usr/bin/perl -w
+my $progname =  "total annihilatin";
+# happy end :)
+my $ver = "0.1b";
+use warnings;
+use strict;
+use autodie;
+use Socket;
+
+my $usage = "Usage anni complex imitator{imitator} uid profile";
+
+die $usage
+	if (4 > @ARGV);
+
+my $csock; # client socket for serer's response
+my $sport = 38216; # server port
+my $sipaddr = "lacalhost";
+my $cport = $sport + 1; # cient port for server response
+
+socket($csock, PF_INET, SOCK_DGRAM, getprotobyname("udp"))
+	or die "open socket: $!";
+
+setsockopt($csock, SOL_SOCKET, SO_REUSEADDR, 1)
+	or die "set sock opt: $!";
+
+# send request to the server
+print "Sending to \"localhost\":$sport\n";
+my $destpaddr = sockaddr_in($sport, inet_aton("localhost"));#inet_aton($sipaddr));
+send($csock, "anni @ARGV", 0, $destpaddr)
+	or die "send: $!";
+
+my $inmask = q(); # string to store the fileno bits for select
+vec($inmask, fileno($csock), 1) = 1;
+# waiting for server response
+while (select(my $outmask = $inmask, undef, undef, 10)) {
+	# proces client request
+	defined(my $srcpaddr = recv($csock, my $response, 2048, 0))
+		or die "recv: $!";
+	my($sport, $sipaddr) = sockaddr_in($srcpaddr);
+	my $serverhost = sprintf "%s [%s:%s]",
+	gethostbyaddr($sipaddr, AF_INET) || "UNKNOWN",
+	inet_ntoa($sipaddr),	
+	$sport;
+	print "ANNI::server: $serverhost response: [$response]\n";
+	last if $response;
+}
+
+close $csock; 

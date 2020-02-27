@@ -1,0 +1,202 @@
+#!/usr/bin/perl -w
+my $progname = "imiator supervisor";
+# Surprisingly, supervisor supervises the set of the worker porcesses that execute imitators' logic and underlaying devece interprocessing fucntions 
+my $ver = "0.1b";
+# The supervisor specification is a tuple consisting of three elements describing how the
+# supervisor should react when a child terminates:
+# 	{RestartStrategy, AllowedRestarts, MaxSeconds}
+# The restart strategy determines how other children are affected if one of their siblings
+# terminates. It can be one of the following:
+# one_for_one
+# Will restart the child that has terminated, without affecting any of the other chil-
+# dren. You should pick this strategy if all of the processes at this level of the super-
+# vision tree are not dependent on each other.
+# one_for_all
+# Will terminate all of the children and restart them. You should use this if there is
+# a strong dependency among all of the children regardless of the order in which they
+# were started.
+# rest_for_one
+# Will terminate all of the children that were started after the child that crashed, and
+# will restart them. This strategy assumes that processes are started in order of de-
+# pendency, where spawned processes are dependent only on their already started
+# siblings.
+use warnings;
+use strict;
+use autodie;
+use Socket;
+
+my $comands = {
+	"spawn" => sub { print "spawn comand\n"; 
+		my ($args, $sup_tree) = @_;
+		my $complex =  shift @$args;
+		my $profile = pop @$args;
+		my $uid = pop @$args;
+		my $imitators = [@$args];
+
+		print "complex: $complex\n";
+		print "profile: $profile\n";
+		print "uid: $uid\n";
+
+		srand time;
+
+		# COMPLEX = PROCS IMITATRORS.
+		# PROCS = evdisp iic [ilogger] [hwbrocker].
+		# IMITATORS = IMITATOR {IMITATOR}.
+		# IMITATOR = imitator logic.
+
+		#$sup_tree->{$complex}{'PROC'} = [ @proc ];
+		#$sup_tree->{$complex}{'IMITATOR'} = [ %imitators ];
+		#my $sup_tree = {};
+		$sup_tree->{$complex}{'PROCS'} = {
+			"run_evdisp" => int rand 10000,
+			"run_iic" => int rand 10000,
+			"run_ilogger" => int rand 10000,
+		};
+
+		my $ims = {};
+		foreach my $im (@$imitators) {
+			print " - $im\n";
+			$ims->{$im} = {
+				"run_imtator" => int rand 10000,
+				"run_logic" => int rand 10000,
+			};
+		}
+
+		$sup_tree->{$complex}{'IMITATORS'} = $ims;
+
+		$sup_tree;
+	},
+	"kill" => sub { print "kill comand\n"; 
+		my ($args, $sup_tree) = @_;
+		my $complex =  shift @$args;
+		my $profile = pop @$args;
+		my $uid = pop @$args;
+		my $imitators = [@$args];
+
+		print "complex: $complex\n";
+		print "profile: $profile\n";
+		print "uid: $uid\n";
+
+		srand time;
+
+		# COMPLEX = PROCS IMITATRORS.
+		# PROCS = evdisp iic [ilogger] [hwbrocker].
+		# IMITATORS = IMITATOR {IMITATOR}.
+		# IMITATOR = imitator logic.
+
+		#$sup_tree->{$complex}{'PROC'} = [ @proc ];
+		#$sup_tree->{$complex}{'IMITATOR'} = [ %imitators ];
+		
+		foreach my $im (@$imitators) {
+			print " - $im\n";
+			delete $sup_tree->{$complex}{'IMITATORS'}{$im};
+		}
+
+		$sup_tree;
+	},
+	"mul" => sub { print "mul comand\n"; 
+		my ($args, $sup_tree) = @_;
+		my $complex =  shift @$args;
+		my $profile = pop @$args;
+		my $uid = pop @$args;
+		my $imitators = [@$args];
+
+		print "complex: $complex\n";
+		print "profile: $profile\n";
+		print "uid: $uid\n";
+
+		srand time;
+
+		# COMPLEX = PROCS IMITATRORS.
+		# PROCS = evdisp iic [ilogger] [hwbrocker].
+		# IMITATORS = IMITATOR {IMITATOR}.
+		# IMITATOR = imitator logic.
+
+		#$sup_tree->{$complex}{'PROC'} = [ @proc ];
+		#$sup_tree->{$complex}{'IMITATOR'} = [ %imitators ];
+		
+		foreach my $im (@$imitators) {
+			print " - $im\n";
+			$sup_tree->{$complex}{'IMITATORS'}{$im} = {
+				"run_imtator" => int rand 10000,
+				"run_logic" => int rand 10000,
+			};
+		}
+
+		$sup_tree;
+	},
+	"anni" => sub { print "anni comand\n"; },
+	
+};
+
+
+my $sup_tree = {};
+
+my $ssock; # server socket
+my $sport = 38217; # server port
+
+socket($ssock, PF_INET, SOCK_DGRAM, getprotobyname("udp"))
+	or die "open socket: $!";
+
+setsockopt($ssock, SOL_SOCKET, SO_REUSEADDR, 1)
+	or die "set sock opt: $!";
+
+my $own_addr = sockaddr_in($sport, INADDR_ANY);
+bind($ssock, $own_addr);
+
+print "SUP::supervisor started!\n";
+
+my $inmask = q(); # string to store the fileno bits for select
+vec($inmask, fileno($ssock), 1) = 1;
+# waiting 
+while (select(my $outmask = $inmask, undef, undef, undef)) {
+
+	# proces client request
+	defined(my $srcpaddr = recv($ssock, my $request, 2048, 0))
+		or die "recv: $!";
+	my($cport, $cipaddr) = sockaddr_in($srcpaddr);
+	my $clienthost = sprintf "%s [%s:%s]",
+	gethostbyaddr($cipaddr, AF_INET) || "UNKNOWN",
+	inet_ntoa($cipaddr),	
+	$cport;
+	print "SUP::client: $clienthost request: [$request]\n";
+
+	# parse request
+	my $args = [split " ", $request];
+	my $cmd = shift @$args;
+	# process request
+	if (exists $comands->{$cmd}) {
+		$sup_tree = $comands->{$cmd}($args, $sup_tree);
+		&show_supervision_tree($sup_tree);
+	}
+
+
+	# send response to the client
+	#my $response = "RESPONSE";
+	#print "server: to \"localhost\":$cport response: [$response]\n";
+	#my $destpaddr = sockaddr_in($cport, $cipaddr);#inet_aton($sipaddr));
+	#send($ssock, $response, 0, $destpaddr)
+	#	or die "send: $!";
+}
+
+sub show_supervision_tree {
+	my $sup_tree = shift;
+
+	print "\n\nSupervision tree:\n";
+	print "-" x 30 . "\n";
+
+	while (my($complex, $value) =each %$sup_tree) {
+		print " - $complex\n";
+		while (my($proc_name, $pid) =each %$value->{'PROCS'}) {
+			print "   - $proc_name:$pid\n";
+		}
+		while (my($im, $procs) =each %$value->{'IMITATORS'}) {
+			print "   - imitator $im\n";
+			while (my($proc_name, $pid) =each %$procs) {
+				print "     - $proc_name:$pid\n";
+			}	
+		} 
+	}
+}
+
+close $ssock;

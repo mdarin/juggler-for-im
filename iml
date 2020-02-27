@@ -1,0 +1,64 @@
+#!/usr/bin/perl -w
+use warnings;
+use strict;
+
+my $usage = "Usage iml complex imitator{imitator} uid profile";
+
+die $usage
+	if (4 > @ARGV);
+
+my $nargs = @ARGV;
+print "narsgs: $nargs\n";
+
+# такой разбор для комондной строки на версию пока подйдёт
+my $complex = shift @ARGV;
+my $profile = pop @ARGV;
+my $uid = pop @ARGV;
+my $imitators = [@ARGV];
+
+print "complex: $complex\n";
+print "profile: $profile\n";
+print "uid: $uid\n";
+
+srand time;
+
+# COMPLEX = PROCS IMITATRORS.
+# PROCS = evdisp iic [ilogger] [hwbrocker].
+# IMITATORS = IMITATOR {IMITATOR}.
+# IMITATOR = imitator logic.
+
+#$sup_tree->{$complex}{'PROC'} = [ @proc ];
+#$sup_tree->{$complex}{'IMITATOR'} = [ %imitators ];
+my $sup_tree = {};
+$sup_tree->{$complex}{'PROCS'} = {
+	"run_evdisp" => int rand 10000,
+	"run_iic" => int rand 10000,
+	"run_ilogger" => int rand 10000,
+};
+
+my $ims = {};
+foreach my $im (@$imitators) {
+	print " - $im\n";
+	$ims->{$im} = {
+		"run_imtator" => int rand 10000,
+		"run_logic" => int rand 10000,
+	};
+}
+
+$sup_tree->{$complex}{'IMITATORS'} = $ims;
+
+
+print "Supervision tree:\n";
+while (my($complex, $value) =each %$sup_tree) {
+	print " - $complex\n";
+	while (my($proc_name, $pid) =each %$value->{'PROCS'}) {
+		print "   - $proc_name:$pid\n";
+	}
+	while (my($im, $procs) =each %$value->{'IMITATORS'}) {
+		print "   - $im\n";
+		while (my($proc_name, $pid) =each %$procs) {
+			print "     - $proc_name:$pid\n";
+		}	
+	} 
+}
+

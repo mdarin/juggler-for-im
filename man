@@ -1,0 +1,98 @@
+#!/usr/bin/perl -w
+my $progname = "imiator manager";
+# Man provides the set of user APIs(comands via socket) and implicit supervisor managemet
+my $ver = "0.1b";
+use warnings;
+use strict;
+use autodie;
+use Socket;
+
+my $ssock; # server socket
+my $sport = 38216; # server port
+my $support = 38217; # supervisor port
+
+socket($ssock, PF_INET, SOCK_DGRAM, getprotobyname("udp"))
+	or die "open socket: $!";
+
+setsockopt($ssock, SOL_SOCKET, SO_REUSEADDR, 1)
+	or die "set sock opt: $!";
+
+my $own_addr = sockaddr_in($sport, INADDR_ANY);
+bind($ssock, $own_addr)
+ or die "bind: $!";
+
+print "juggler goes!\n";
+
+#print "Sending to \"localhost\":$sport\n";
+#my $destpaddr = sockaddr_in($sport, inet_aton("localhost"));#inet_aton($sipaddr));
+#send($ssock, "x", 0, $destpaddr)
+#	or die "send: $!";
+
+print "MAN::starting supervisor...\n";
+defined (my $sup_pid = fork)
+	or die "Can't fork supervisor porcess: $!";
+unless ($sup_pid) {
+	exec "./sup";
+}
+
+# Это как пример проверки процесса на жизнь
+# $res ->
+# 	0 - умер
+# 	1 - жив
+my $res = kill(0, $sup_pid); 
+if ($res) {
+	print " {sup,$sup_pid} started    ok!\n";
+} else {
+	print " sup starting    fault!\n";
+}
+
+
+my $inmask = q(); # string to store the fileno bits for select
+vec($inmask, fileno($ssock), 1) = 1;
+# waiting for clients
+while (select(my $outmask = $inmask, undef, undef, undef)) {
+
+	# proces client request
+	defined(my $srcpaddr = recv($ssock, my $request, 2048, 0))
+		or die "recv: $!";
+	my($cport, $cipaddr) = sockaddr_in($srcpaddr);
+	my $clienthost = sprintf "%s [%s:%s]",
+	gethostbyaddr($cipaddr, AF_INET) || "UNKNOWN",
+	inet_ntoa($cipaddr),	
+	$cport;
+	print "MAN::client: $clienthost request: [$request]\n";
+
+	# parse $request
+	my $args = [split " ", $request];
+	foreach (@$args) {
+		print " arg: [$_]\n";
+	}
+	
+	my $fun = shift @$args;
+	print " \&function: $fun\n";
+
+	# process commands	
+  
+
+	# send response to the client
+	my $response = "RESPONSE";
+	print "MAN::server: to \"localhost\":$cport response: [$response]\n";
+	my $destpaddr = sockaddr_in($cport, $cipaddr);#inet_aton($sipaddr));
+	send($ssock, $response, 0, $destpaddr)
+		or die "send: $!";
+
+	# send command to the supervisor
+	#$response = "RESPONSE";
+	print "MAN::server: to \"localhost\":$support request: [$request]\n";
+	$destpaddr = sockaddr_in($support, inet_aton("localhost"));#inet_aton($sipaddr));
+	send($ssock, $request, 0, $destpaddr)
+		or die "send: $!";
+
+	last if ($fun =~ m/(\bstop\b)/i);
+}
+# Hasta la vista
+print "juggler: I'll be back!..\n\n";
+close $ssock; 
+
+
+
